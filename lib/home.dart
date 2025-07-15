@@ -155,7 +155,6 @@ class _HomeState extends State<Home> {
   Future<Map?> downloadImage(String imageUrl, String fileName) async {
     try {
       if (await Permission.storage.request().isDenied) {
-        print("Không có quyền truy cập bộ nhớ");
         return null;
       }
       // Android 11 top hight (API 30+):
@@ -163,7 +162,6 @@ class _HomeState extends State<Home> {
           (await Permission.manageExternalStorage.status.isDenied)) {
         final status = await Permission.manageExternalStorage.request();
         if (status.isDenied || status.isPermanentlyDenied) {
-          print("Không có quyền quản lý bộ nhớ ngoài");
           return null;
         }
       }
