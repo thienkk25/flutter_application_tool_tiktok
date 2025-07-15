@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -19,30 +20,51 @@ class _HomeState extends State<Home> {
   bool checkId = false;
   bool isLoading = false;
 
-  void covertLinkTT() {
-    final urlRegExp = RegExp(
-      r'(https?:\/\/)(?:www\.)?(?:tiktok\.com|[a-z]{2,3}\.douyin\.com|[a-z]{1,3}\.xzcs3zlph\.com|[a-z]{1,3}\.tiktok\.com)\/[^\s]*',
-      multiLine: true,
-    );
-    String? videoId;
-    final allMatches = urlRegExp.allMatches(textEditingController.text);
+  void covertLinkTT() async {
+    final url = textEditingController.text.trim();
+    if (url.isEmpty) return;
 
-    for (final match in allMatches) {
-      final url = match.group(0);
-      final expMatch = RegExp(r'/video/(\d+)').firstMatch(url!);
-      if (expMatch != null) {
-        videoId = expMatch.group(1)!;
-        break;
+    setState(() {
+      isLoading = true;
+    });
+
+    final Uri? uri;
+    try {
+      uri = Uri.parse(url);
+    } catch (_) {
+      showError();
+      return;
+    }
+
+    if (uri.host.contains('vt.tiktok.com')) {
+      await resolveTikTokShortUrlWithWebView(
+        context,
+        url,
+        (videoId) async {
+          await getData(videoId);
+        },
+        () {
+          showError();
+        },
+      );
+    } else if (uri.path.contains('/video/')) {
+      final match = RegExp(r'/video/(\d+)').firstMatch(url);
+      if (match != null) {
+        final videoId = match.group(1)!;
+        await getData(videoId);
+      } else {
+        showError();
       }
-    }
-    if (videoId != null) {
-      getData(videoId);
     } else {
-      setState(() {
-        checkId = false;
-        isLoading = false;
-      });
+      showError();
     }
+  }
+
+  void showError() {
+    setState(() {
+      checkId = false;
+      isLoading = false;
+    });
   }
 
   Future<void> getData(String videoId) async {
@@ -76,6 +98,58 @@ class _HomeState extends State<Home> {
         isLoading = false;
       });
     }
+  }
+
+  Future<void> resolveTikTokShortUrlWithWebView(
+    BuildContext context,
+    String shortUrl,
+    void Function(String videoId) onResolved,
+    void Function()? onError,
+  ) async {
+    final controller = WebViewController();
+    bool resolved = false;
+
+    final webView = WebViewWidget(
+      controller: controller
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onPageStarted: (String url) {
+              if (!resolved && url.contains('/video/')) {
+                final match = RegExp(r'/video/(\d+)').firstMatch(url);
+                if (match != null) {
+                  resolved = true;
+                  final videoId = match.group(1)!;
+                  Navigator.of(context).pop();
+                  onResolved(videoId);
+                }
+              }
+            },
+            onWebResourceError: (_) {
+              if (!resolved) {
+                resolved = true;
+                Navigator.of(context).pop();
+                onError?.call();
+              }
+            },
+          ),
+        )
+        ..loadRequest(Uri.parse(shortUrl)),
+    );
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        insetPadding: EdgeInsets.zero,
+        backgroundColor: Colors.transparent,
+        child: SizedBox(
+          width: 0,
+          height: 0,
+          child: webView,
+        ),
+      ),
+    );
   }
 
   Future<Map?> downloadImage(String imageUrl, String fileName) async {
@@ -171,8 +245,7 @@ class _HomeState extends State<Home> {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content:
-                                          Text("Lỗi nghiêm trọng khi tải ảnh."),
+                                      content: Text("Lỗi khi tải ảnh."),
                                     ),
                                   );
                                 }
