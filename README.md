@@ -1,3 +1,3 @@
 # flutter_application_tool_tiktok
 
-A new Flutter project.
+Youtube video cover photo download app.
